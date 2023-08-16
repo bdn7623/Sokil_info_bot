@@ -5,7 +5,10 @@ import sqlite3
 from telebot import types
 import os
 from dotenv import load_dotenv, find_dotenv
-from info import * #Уся інформація для назв кнопок та їх зміст
+import schedule
+import time
+from info2 import *
+import threading
 
 load_dotenv(find_dotenv())
 
@@ -18,16 +21,16 @@ def start_action(message):
     for number, element in enumerate(bottons, 1):
         locals()["botton" + str(number)] = f"botton{number}"
         button = types.KeyboardButton(text=element)
-        button_width = len(element) * 2  # Розрахунок ширини кнопки на основі довжини тексту
+        button_width = len(element) * 2
         button.button_width = button_width
         row.append(button)
 
-        if len(row) == 2:  # Якщо рядок містить 2 кнопки
-            markup.row(*row)  # Додати рядок кнопок до розмітки
-            row = []  # Очистити список для наступного рядка
+        if len(row) == 2:
+            markup.row(*row)
+            row = []
 
-    if row:  # Якщо залишилися кнопки в останньому неповному рядку
-        markup.row(*row)  # Додати останній рядок кнопок до розмітки
+    if row:
+        markup.row(*row)
 
     bot.send_message(message.chat.id,
                      'Вітаю, {0.first_name}! \nЯ Сокіл_Інфо_Бот. \nОберіть потрібний розділ:'.format(message.from_user),
@@ -35,7 +38,7 @@ def start_action(message):
     registration(message)
 
 def registration(message):
-    connect = sqlite3.connect('users.db')
+    connect = sqlite3.connect(os.environ["DB1_CONNECTION"])
     cursor = connect.cursor()
     cursor.execute("""CREATE TABLE IF NOT EXISTS login_id(
         id INTEGER UNIQUE,
@@ -123,15 +126,14 @@ def bot_message(message):
 
 def review(message):
     first_name = message.chat.first_name
-    message_admin = message.text
-    print(message_admin)
+    print(message.text)
     admin_id = (os.getenv("my_id"))
     bot.send_message(admin_id, f"Надійшов запит від @{first_name} !\n"
                                f"Текст: \n"
-                               f"{message_admin}")
+                               f"{message.text}")
     bot.send_message(message.chat.id, 'Заявку відправлено')
 
-    connect = sqlite3.connect('users_text.db')
+    connect = sqlite3.connect(os.environ["DB2_CONNECTION"])
     cursor = connect.cursor()
     cursor.execute("""CREATE TABLE IF NOT EXISTS user_messages(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,5 +151,31 @@ def review(message):
     connect.commit()
 
     start_action(message)
+
+db_connection = sqlite3.connect(os.environ["DB1_CONNECTION"])
+db_cursor = db_connection.cursor()
+
+def check_messages():
+    with sqlite3.connect(os.environ["DB1_CONNECTION"]) as db_connection:
+        db_cursor = db_connection.cursor()
+        db_cursor.execute("SELECT id FROM login_id")
+        user_ids = db_cursor.fetchall()
+
+        for user_id in user_ids:
+            user_id = user_id[0]
+            bot.send_message(user_id, sent_all_message)
+
+def scheduled_check_messages():
+    check_messages()
+
+schedule.every(3).seconds.do(scheduled_check_messages)
+
+def schedule_loop():
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+schedule_thread = threading.Thread(target=schedule_loop)
+schedule_thread.start()
 
 bot.polling(none_stop=True)
